@@ -1,122 +1,115 @@
 import streamlit as st
-#from langchain.llms import Groq
-from langchain_groq import ChatGroq
-#from langchain.prompts import PromptTemplate
-from langchain_core.prompts import ChatPromptTemplate
-from langchain.chains import LLMChain
-#from langchain.callbacks import StreamlitCallbackHandler
-#from dotenv import load_dotenv
+from groq import Groq
+from dotenv import load_dotenv
 import time
 import os
-from typing import List
+load_dotenv()
 
-# Set up Groq API key
-#load_dotenv()
-os.environ["GROQ_API_KEY"] = "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"
-
-# Initialize Groq LLM with a specific model
-llm = ChatGroq(
-    model_name="mixtral-8x7b-32768",  # Specify the model you want to use
-    temperature=0.7,
-    max_tokens=32000  # Adjust based on the model's capabilities
-)
-
-# Define prompt templates
-h2_prompt = ChatPromptTemplate(
-    input_variables=["topic"],
-    template="""Generate a sequence of H2 tags for a blog page on the topic of {topic}. 
-    This is for a blog page, not the main page, so focus on relevant subtopics. 
-    Provide between 10 and 20 H2 tags. Include FAQs at the end. 
-    Only provide H2 tags that are relevant to the topic."""
-)
-
-content_prompt = ChatPromptTemplate(
-    input_variables=["h2_tag"],
-    template="""Generate unique and relevant content for the following H2 tag:
-
-    {h2_tag}
-
-    Provide 1 to 2 paragraphs of formal length. 
-    Only provide information that has been asked for, with no unnecessary or unasked input."""
-)
-
-html_format_prompt = ChatPromptTemplate(
-    input_variables=["content"],
-    template="""Convert the following content into HTML format:
-
-    {content}
-
-    Wrap the H2 tag in a <section> tag. 
-    Put the section heading in <h2> tags and the information in <p> tags. 
-    Do not use <div> tags. 
-    Do not change or modify any information, only update it into HTML format. 
-    Bold important keywords, but don't make it too dense. 
-    Ensure there aren't too many bold words in a single paragraph."""
-)
-
-# Create LLMChains
-h2_chain = LLMChain(llm=llm, prompt=h2_prompt)
-content_chain = LLMChain(llm=llm, prompt=content_prompt)
-html_chain = LLMChain(llm=llm, prompt=html_format_prompt)
-
-def generate_content_for_h2(h2_tag: str) -> str:
-    """Generate content for a single H2 tag with error handling and retries."""
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            return content_chain.run(h2_tag)
-        except Exception as e:
-            if attempt < max_retries - 1:
-                st.warning(f"Error generating content for '{h2_tag}'. Retrying... (Attempt {attempt + 1})")
-                time.sleep(2)  # Wait before retrying
-            else:
-                st.error(f"Failed to generate content for '{h2_tag}' after {max_retries} attempts.")
-                return f"Content generation failed for: {h2_tag}"
-
-def format_html_section(content: str) -> str:
-    """Format a single section of content as HTML with error handling."""
-    try:
-        return html_chain.run(content)
-    except Exception as e:
-        st.error(f"Error formatting HTML: {str(e)}")
-        return f"<section><h2>Error</h2><p>Failed to format content as HTML.</p></section>"
-
-# Streamlit app
-st.title("Blog Content Generator")
-
-topic = st.text_input("Enter the main topic for your blog page:")
-
-if topic:
-    st.write("Generating content...")
+def generate_blog_content(topic):
+    # Initialize Groq client
+    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
     
-    # Generate H2 tags
-    with st.spinner("Generating H2 tags..."):
-        h2_tags_text = h2_chain.run(topic)
-        h2_tags = [tag.strip() for tag in h2_tags_text.split('\n') if tag.strip()]
-    st.write(f"{len(h2_tags)} H2 tags generated!")
+    # Craft the prompt for structured blog content
+    prompt = f"""Generate a comprehensive, informative, and topic-focused blog post on '{topic}', designed for readers seeking reliable medical information.
 
-    # Generate content for H2 tags
-    html_sections = []
-    for i, h2_tag in enumerate(h2_tags):
-        with st.spinner(f"Generating content for H2 tag {i+1}/{len(h2_tags)}..."):
-            content = generate_content_for_h2(h2_tag)
-            html_section = format_html_section(f"{h2_tag}\n\n{content}")
-            html_sections.append(html_section)
-        
-        # Optional: Add a delay to avoid rate limiting
-        time.sleep(1)
+Content and Structure:
+- Create **20 distinct sections** on key aspects of the topic, with the **final section dedicated to FAQs**.
+- Each section should directly relate to the main topic and contain content strictly relevant to the heading.
+- Begin each section with a <section> tag, using <h2> tags for section headings and <p> tags for content.
 
-    # Combine all HTML sections
-    full_html_content = "\n".join(html_sections)
+Content Requirements:
+- Use precise and informative medical language to ensure clarity and reader confidence.
+- Each <h2> tag heading must directly support or expand upon the main topic, avoiding unrelated or extraneous information.
+- **Highlight essential terms** with <strong> tags, focusing on clarity and key concepts dont forget this its very important.
+- Ensure each paragraph is 150-200 words and stays focused on providing depth and relevance without digressing.
 
-    # Display the generated HTML content
-    st.subheader("Generated HTML Content:")
-    st.code(full_html_content, language="html")
+Formatting and Tone:
+- Use a formal, authoritative tone appropriate for a professional medical blog.
+- Avoid unnecessary questions or unrelated content; every section should add value, with each <h2> and associated content directly tied to '{topic}'.
+- Ensure FAQs answer only relevant questions readers might have after reading the main content.
 
-    # Option to download the HTML content
-    st.download_button(
-        label="Download HTML",
-        data=full_html_content,
-        file_name="blog_content.html",
-        mime="text/html"
-    )
+Example of Section Structure:
+<section>
+    <h2>Overview of [Medical Condition]</h2>
+    <p>Clear, comprehensive overview with <strong>key terms</strong> highlighted for emphasis...</p>
+</section>
+
+Example of FAQ Section:
+<section>
+    <h2>FAQs</h2>
+    <h3>What causes [Medical Condition]?</h3>
+    <p>A clear, accurate answer with <strong>relevant terms</strong> highlighted.</p>
+</section>
+"""
+
+    try:
+        completion = client.chat.completions.create(
+            model="mixtral-8x7b-32768",  # Groq's Mixtral model
+            messages=[
+                {"role": "system", "content": "You are a specialized medical content writer with expertise in Indian healthcare and medical tourism. Create professional, accurate, and well-structured content."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=32000
+        )
+        return completion.choices[0].message.content
+    except Exception as e:
+        return f"Error generating content: {str(e)}"
+
+# Streamlit UI
+st.title("Blog Content Generator")
+st.write("Enter your blog topic and get a formatted blog post with proper HTML structure.")
+
+# Input field for blog topic
+topic = st.text_input("Enter your blog topic:")
+
+# Generate button
+if st.button("Generate Blog Content"):
+    if topic:
+        with st.spinner("Generating your blog content..."):
+            # Show a progress bar
+            progress_bar = st.progress(0)
+            for i in range(100):
+                time.sleep(0.01)
+                progress_bar.progress(i + 1)
+            
+            # Generate content
+            blog_content = generate_blog_content(topic)
+            
+            # Display raw HTML
+            st.subheader("Generated HTML Content:")
+            st.code(blog_content, language='html')
+            
+            # Display rendered content
+            st.subheader("Preview:")
+            st.markdown(blog_content, unsafe_allow_html=True)
+            
+            # Add download button
+            st.download_button(
+                label="Download HTML",
+                data=blog_content,
+                file_name=f"{topic.lower().replace(' ', '-')}-blog.html",
+                mime="text/html"
+            )
+    else:
+        st.warning("Please enter a blog topic.")
+
+# Add sidebar with instructions
+with st.sidebar:
+    st.header("Instructions")
+    st.write("""
+    1. Enter your blog topic in the text field
+    2. Click 'Generate Blog Content'
+    3. View the generated HTML and preview
+    4. Download the HTML file if satisfied
+    """)
+    
+    st.header("Features")
+    st.write("""
+    - Generates 20 sections including FAQs
+    - Proper HTML structure with semantic tags
+    - Bold important keywords
+    - Clean, readable format
+    - Downloadable HTML file
+    - Powered by Groq's Mixtral model
+    """)
